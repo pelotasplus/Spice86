@@ -2,6 +2,7 @@ namespace Spice86.Mcp;
 
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Spice86.Core.Emulator.Devices.Video.Registers;
 
 using SkiaSharp;
 
@@ -998,6 +999,43 @@ internal sealed class EmulatorMcpTools {
         });
     }
 
+    [McpServerTool(Name = "read_dac_palette", UseStructuredContent = true), Description("Read the VGA DAC's 256-colour palette: the actual colours on screen in mode 13h. Returns 6-bit RGB as stored plus 8-bit RGB and packed ARGB. Unlike read_video_palette, which returns only the 16 EGA attribute registers, this is what indexed graphics resolve through.")]
+    public CallToolResult ReadDacPalette(int startIndex = 0, int count = 256) {
+        return ExecuteTool(() => {
+            if (startIndex < 0 || startIndex > 255) {
+                return new { success = false, message = "startIndex must be between 0 and 255" };
+            }
+            if (count < 1 || startIndex + count > 256) {
+                return new { success = false, message = "count must be between 1 and 256 - startIndex" };
+            }
+            lock (_services.ToolsLock) {
+                DacRegisters dac = GetVgaVideoState().DacRegisters;
+                var entries = new object[count];
+                for (int i = 0; i < count; i++) {
+                    int index = startIndex + i;
+                    // Stored 6-bit, as the hardware holds it. Scaling by 255/63
+                    // rather than shifting left by two keeps white at 255 instead
+                    // of 252, which matters when comparing against a screenshot.
+                    byte r6 = dac.Palette[index, 0];
+                    byte g6 = dac.Palette[index, 1];
+                    byte b6 = dac.Palette[index, 2];
+                    entries[i] = new {
+                        Index = index,
+                        R6 = r6, G6 = g6, B6 = b6,
+                        R = r6 * 255 / 63, G = g6 * 255 / 63, B = b6 * 255 / 63,
+                        Argb = dac.PaletteMap[index]
+                    };
+                }
+                return new {
+                    StartIndex = startIndex,
+                    Count = count,
+                    PixelMask = dac.PixelMask,
+                    Entries = entries
+                };
+            }
+        });
+    }
+
     [McpServerTool(Name = "read_video_palette", UseStructuredContent = true), Description("Read EGA/VGA palette registers, overscan border color, pixel mask, and color page state.")]
     public CallToolResult QueryVideoPalette() {
         return ExecuteTool(() => {
@@ -1367,6 +1405,11 @@ internal sealed class EmulatorMcpTools {
 
     private Midi GetMidi() {
         return _services.Midi ?? throw new InvalidOperationException("MIDI device is not available");
+    }
+
+    /// <summary>Named to avoid clashing with the GetVideoState tool above.</summary>
+    private IVideoState GetVgaVideoState() {
+        return _services.VideoState ?? throw new InvalidOperationException("Video state is not available");
     }
 
     private IVgaFunctionality GetVgaFunctionality() {

@@ -103,6 +103,13 @@ public sealed class EmulatorMcpServices(
     public IVgaFunctionality? VgaFunctionality { get; set; }
 
     /// <summary>
+    ///     VGA state, which owns the DAC. Needed to read the 256-colour palette:
+    ///     <c>read_video_palette</c> exposes only the 16 attribute registers, which
+    ///     say nothing about the colours a mode 13h screen is actually using.
+    /// </summary>
+    public IVideoState? VideoState { get; set; }
+
+    /// <summary>
     /// Gets or sets the BIOS data area accessor used by BIOS and video MCP tools.
     /// </summary>
     public BiosDataArea? BiosDataArea { get; set; }
