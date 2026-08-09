@@ -118,6 +118,23 @@ public class CfgNodeFeeder {
             return fromMemory;
         }
 
+        // The same provenance gate, for the MEMORY side. Speculative discovery
+        // (#2222) can hand us a speculative instruction from memory too, and
+        // CreateSelectorNodeBetween rejects a speculative operand on either
+        // side -- so without this the run loop dies with
+        // UnhandledCfgDiscrepancyException on self-modifying code. Dune's intro
+        // reaches it within a few billion cycles.
+        //
+        // We cannot promote here: TryPromoteStaleSpeculativeNode expects the
+        // speculative node on the graph side and a *live* counterpart, and the
+        // graph node is stale by definition at this point. So skip the selector
+        // and execute what memory says, which is authoritative for
+        // self-modifying code. The cost is graph fidelity -- the two variants
+        // are not linked by a selector -- not a wrong instruction.
+        if (fromMemory.IsSpeculative) {
+            return fromMemory;
+        }
+
         // Genuinely different instructions at the same address. Inject a SelectorNode
         return _nodeLinker.CreateSelectorNodeBetween(fromMemory, (CfgInstruction)graphNodeAfterReconciliation);
     }
